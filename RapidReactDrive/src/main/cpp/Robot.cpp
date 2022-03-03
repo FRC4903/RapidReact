@@ -68,11 +68,13 @@ class Robot: public TimedRobot {
     DrivePeriodic(J1_1y, J1_2x);
 
     //runs intake motor, not currently hooked up but will roll wheels to pop balls in and out of the arm mechanism
-    intake.Set(ControlMode::PercentOutput, J1_1x);
+    intake.Set(ControlMode::PercentOutput, (firstStick.GetRawButton(3)-firstStick.GetRawButton(1)));
+
+    float armpow = (firstStick.GetRawButton(8)-firstStick.GetRawButton(7))*0.2;
 
     //not fancy joystick controls for arm motors, rotates arm2 opposite since it's rotated 180 and runs backwards NOTE: don't snap my precious baby's arms
-    Arm_1.Set(J1_2y);
-    Arm_2.Set(-J1_2y);
+    Arm_1.Set(armpow);
+    Arm_2.Set(-1*armpow);
 
     //puts encoder values to the shuffleboard so we can get the arm positions (important for presetting positions)
     SmartDashboard::PutNumber("Left", Arm1E.GetPosition());
