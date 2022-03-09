@@ -46,6 +46,7 @@ class Robot: public TimedRobot {
  
   //initializes the intake/shoot motor on the arm
   TalonSRX intake;
+  TalonSRX climblen;
 
   //joysticks added, first is main driver, second is co-pilot with control over arms and such
   Joystick firstStick{0};
@@ -75,7 +76,8 @@ class Robot: public TimedRobot {
 
   //adds ID to talons
   Robot():
-    intake(7)
+    intake(7),
+    climblen(8)
   {}
 
   //sets all motors to 0 output on init
@@ -97,6 +99,7 @@ class Robot: public TimedRobot {
     initializePID(Arm2PID, "arm2", armP, armI, armD, armIz, armFF, armMaxOutput, armMinOutput);
 
     intake.Set(ControlMode::PercentOutput, 0);
+    climblen.Set(ControlMode::PercentOutput, 0);
   }
   //no auto yet *wink wink nudge nudge auto people*
   void autonomousInit() {}
@@ -157,6 +160,7 @@ class Robot: public TimedRobot {
 
     //runs intake motor, only half power on the way in because balls kept tearing
     intake.Set(ControlMode::PercentOutput, ((secondStick.GetRawButton(6)*0.5)-secondStick.GetRawButton(5)));
+    climblen.Set(ControlMode::PercentOutput, secondStick.GetRawAxis(3));
     
     //puts encoder values to the shuffleboard so we can get the arm positions (important for presetting positions)
     SmartDashboard::PutNumber("Left", Arm1E.GetPosition());
