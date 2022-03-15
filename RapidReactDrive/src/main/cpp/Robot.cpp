@@ -1,6 +1,6 @@
 /*beginning Rapid React code, basic drive and running motors so far
 */
-
+#include <frc/DigitalInput.h>
 #include "frc/TimedRobot.h"
 #include "rev/CANSparkMax.h"
 #include <fmt/core.h>
@@ -9,6 +9,7 @@
 #include <frc/Encoder.h>
 #include <frc/Joystick.h>
 #include <ctre/Phoenix.h>
+#include "cameraserver/CameraServer.h"
 //includes, just as many as possible without causing errors as usual
 
 using namespace frc;
@@ -46,7 +47,10 @@ class Robot: public TimedRobot {
  
   //initializes the intake/shoot motor on the arm
   TalonSRX intake;
+  TalonSRX climbtilt;
   TalonSRX climblen;
+
+  DigitalInput tiltb, tiltf;
 
   //joysticks added, first is main driver, second is co-pilot with control over arms and such
   Joystick firstStick{0};
@@ -73,12 +77,21 @@ class Robot: public TimedRobot {
   //speed modifier for drive in teleop, default is 50%, slow is 25, and full is 100
   double speedmod = 0.5;
 
+  double tiltpow = 0;
 
   //adds ID to talons
   Robot():
     intake(7),
-    climblen(8)
-  {}
+    climblen(8),
+    climbtilt(9),
+    tiltb(0),
+    tiltf(1)
+  {
+    cs::UsbCamera camera1 = CameraServer::GetInstance()->StartAutomaticCapture();
+    camera1.SetResolution(160, 120);
+    cs::UsbCamera camera2 = CameraServer::GetInstance()->StartAutomaticCapture();
+    camera2.SetResolution(160, 120);
+  }
 
   //sets all motors to 0 output on init
   void RobotInit() {
@@ -99,7 +112,6 @@ class Robot: public TimedRobot {
     initializePID(Arm2PID, "arm2", armP, armI, armD, armIz, armFF, armMaxOutput, armMinOutput);
 
     intake.Set(ControlMode::PercentOutput, 0);
-    climblen.Set(ControlMode::PercentOutput, 0);
   }
   //no auto yet *wink wink nudge nudge auto people*
   void autonomousInit() {}
@@ -158,10 +170,24 @@ class Robot: public TimedRobot {
       speedmod=0.5;
     }
 
-    //runs intake motor, only half power on the way in because balls kept tearing
-    intake.Set(ControlMode::PercentOutput, ((secondStick.GetRawButton(6)*0.5)-secondStick.GetRawButton(5)));
-    climblen.Set(ControlMode::PercentOutput, secondStick.GetRawAxis(3));
+    //runs intake motor, only half power on the way in because balls kept tearing, also half power option for pilot so it can pick up two balls without ejecting it across the room
+    intake.Set(ControlMode::PercentOutput, ((secondStick.GetRawButton(6)*0.5)-secondStick.GetRawButton(5)-firstStick.GetRawButton(8)*0.5));
+    //climb length and tilt mapped to copilot joysticks, maybe add climb mode toggle so the climb cant run on accident
+    climblen.Set(ControlMode::PercentOutput, secondStick.GetRawAxis(1));
     
+  
+    tiltpow = secondStick.GetRawAxis(3)/3;
+    if (tiltb.Get() && tiltpow > 0) {
+      tiltpow = 0;
+    } else if (tiltf.Get() && tiltpow < 0) {
+      tiltpow = 0;
+    }
+    SmartDashboard::PutNumber("tiltf", tiltf.Get());
+    SmartDashboard::PutNumber("tiltb", tiltb.Get());
+  
+
+    climbtilt.Set(ControlMode::PercentOutput, tiltpow);
+
     //puts encoder values to the shuffleboard so we can get the arm positions (important for presetting positions)
     SmartDashboard::PutNumber("Left", Arm1E.GetPosition());
     SmartDashboard::PutNumber("Right", Arm2E.GetPosition());
