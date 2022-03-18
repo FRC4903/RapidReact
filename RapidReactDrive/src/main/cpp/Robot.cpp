@@ -1,11 +1,17 @@
-/*beginning Rapid React code, basic drive and running motors so far
+/*Rapid React code, drive and some auto
 */
-#include <frc/DigitalInput.h>
+#include <iostream>
+
+#include <frc/Timer.h>
 #include "frc/TimedRobot.h"
+
+#include <frc/DigitalInput.h>
 #include "rev/CANSparkMax.h"
 #include <fmt/core.h>
-#include <iostream>
+
 #include <frc/smartdashboard/SmartDashboard.h>
+#include <frc/smartDashboard/SendableChooser.h>
+
 #include <frc/Encoder.h>
 #include <frc/Joystick.h>
 #include <ctre/Phoenix.h>
@@ -22,7 +28,7 @@ class Robot: public TimedRobot {
   //initializing drive motors, encoders, and PID controllers for fancy automatic movements (note: left motors run backwards)
   CANSparkMax Left_1{1, CANSparkMax::MotorType::kBrushless};
   SparkMaxPIDController Left1PID = Left_1.GetPIDController();
-  SparkMaxRelativeEncoder Left1E = Left_1.GetEncoder(); 
+  SparkMaxRelativeEncoder Left1E = Left_1.GetEncoder();
 
   CANSparkMax Left_2{2, CANSparkMax::MotorType::kBrushless};
   SparkMaxPIDController Left2PID = Left_2.GetPIDController();
@@ -50,7 +56,7 @@ class Robot: public TimedRobot {
   TalonSRX climbtilt;
   TalonSRX climblen;
 
-  DigitalInput tiltb, tiltf;
+  DigitalInput tiltb, tiltf, armTop;
 
   //joysticks added, first is main driver, second is co-pilot with control over arms and such
   Joystick firstStick{0};
@@ -64,7 +70,7 @@ class Robot: public TimedRobot {
   double turnratio = 0.6;
 
   //PID constants for drive motors
-  double driveP = 1e-2, driveI = 1e-6, driveD = 0, driveIz = 0, driveFF = 0.000015, driveMaxOutput = 0.8, driveMinOutput = -0.8; 
+  double driveP = 1e-2, driveI = 1e-6, driveD = 0, driveIz = 0, driveFF = 0.000015, driveMaxOutput = 0.2, driveMinOutput = -0.2;
   //PID constants for arm motors
   double armP = 1e-2, armI = 2e-6, armD = 0, armIz = 0, armFF = 0.000015, armMaxOutput = 0.5, armMinOutput = -0.5; 
 
@@ -79,13 +85,31 @@ class Robot: public TimedRobot {
 
   double tiltpow = 0;
 
-  //adds ID to talons
+  // init timer
+  Timer *gameTimer = new Timer();
+
+  //start positions of left and right side, set in autonomousinit
+  float startl = 0;
+  float startr = 0;
+
+  int checkpoint;
+
+  float circumfirence = 23.6;
+  float gear_ratio = 10.7;
+  float factorToConvertDistToRot = circumfirence / gear_ratio;
+
+  // options for auto
+  enum AutoOptions { Auto1, Auto2, Auto3, Auto4, Auto5 };
+  SendableChooser<AutoOptions> m_chooser;
+
+  // adds ID to talons
   Robot():
     intake(7),
     climblen(8),
     climbtilt(9),
     tiltb(0),
-    tiltf(1)
+    tiltf(1),
+    armTop(2)
   {
     cs::UsbCamera camera1 = CameraServer::GetInstance()->StartAutomaticCapture();
     camera1.SetResolution(160, 120);
@@ -93,7 +117,7 @@ class Robot: public TimedRobot {
     camera2.SetResolution(160, 120);
   }
 
-  //sets all motors to 0 output on init
+  // sets all motors to 0 output on init
   void RobotInit() {
     Left_1.Set(0);
     Left_2.Set(0);
@@ -102,7 +126,16 @@ class Robot: public TimedRobot {
     Arm_1.Set(0);
     Arm_2.Set(0);
 
-    //initializes PID controllers for drive and arm motors
+    // add all the options to the shuffle board
+    m_chooser.SetDefaultOption("Auto 1", AutoOptions::Auto1);
+    m_chooser.AddOption("Auto 2", AutoOptions::Auto2);
+    m_chooser.AddOption("Auto 3", AutoOptions::Auto3);
+    m_chooser.AddOption("Auto 4", AutoOptions::Auto4);
+    m_chooser.AddOption("Auto 5", AutoOptions::Auto5);
+
+    SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
+
+    // initializes PID controllers for drive and arm motors
     initializePID(Left1PID, "left1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
     initializePID(Left2PID, "left2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
     initializePID(Right1PID, "right1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
@@ -113,9 +146,99 @@ class Robot: public TimedRobot {
 
     intake.Set(ControlMode::PercentOutput, 0);
   }
-  //no auto yet *wink wink nudge nudge auto people*
-  void autonomousInit() {}
-  void autonomousPeriodic() {}
+  
+  void AutonomousInit() {
+    MotorReset();
+    PIDReset();
+    // sets start positions to the encoder's position at start
+    startl = Left1E.GetPosition();
+    startr = Right1E.GetPosition();
+
+    // just make sure checkpoint is 0 at the start of each auto
+    checkpoint = 0;
+
+    // start the timer
+    gameTimer -> Start();
+    gameTimer -> Reset();
+  }
+
+  void AutonomousPeriodic() {
+    // check our selected auto option
+    AutoOptions m_Selection = m_chooser.GetSelected();
+
+    // current position of the motors
+    float lpos = Left1E.GetPosition();
+    float rpos = Right1E.GetPosition();
+
+    // throw encoder and checkpoint at shuffle board
+    SmartDashboard::PutNumber("checkpoint ", checkpoint);
+    SmartDashboard::PutNumber("startl ", startl);
+    SmartDashboard::PutNumber("startr ", startr);
+
+    if (m_Selection == AutoOptions::Auto1) {
+        if (checkpoint == 0) {
+            Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
+            if (gameTimer -> Get() > 0.5_s && gameTimer -> Get() < 1_s) {
+                intake.Set(ControlMode::PercentOutput, -1);
+            }
+            if (gameTimer -> Get() >= 1_s) {
+                intake.Set(ControlMode::PercentOutput, 0);
+                checkpoint = 1;
+            }
+
+        } else if (checkpoint == 1) {
+            Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
+            autoDrive(80/2.2, 80/2.2, startl, startr);
+
+            if (gameTimer -> Get() > 2.5_s && gameTimer -> Get() < 3_s) {
+                intake.Set(ControlMode::PercentOutput, 1);
+            }
+
+            if (gameTimer -> Get() >= 3_s) {
+                intake.Set(ControlMode::PercentOutput, 0);
+                checkpoint = 2;
+            }
+        } else if (checkpoint == 2) {
+            Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
+            autoDrive(0, 0, startl, startr);
+            
+            if (gameTimer -> Get() > 4.5_s && gameTimer -> Get() < 5_s) {
+                intake.Set(ControlMode::PercentOutput, -1);
+            }
+
+            if (gameTimer -> Get() >= 5_s) {
+                intake.Set(ControlMode::PercentOutput, 0);
+                Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
+                checkpoint = 3;
+            }
+        } else {
+            MotorReset();
+        }
+
+    } else if (m_Selection == AutoOptions::Auto2) {
+        if (checkpoint == 0) {
+            autoDrive(80/2.2, 80/2.2, startl, startr);
+            Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
+            
+            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2.2_s) {
+                intake.Set(ControlMode::PercentOutput, 1);
+            }
+
+            if (gameTimer -> Get() > 2.2_s) {
+                intake.Set(ControlMode::PercentOutput, 0);
+                checkpoint = 1;
+            }
+        } else {
+            MotorReset();
+        }
+    } else if (m_Selection == AutoOptions::Auto3) {
+        // do auto 3
+    } else if (m_Selection == AutoOptions::Auto4) {
+        // do auto 4
+    } else if (m_Selection == AutoOptions::Auto5) {
+        // do auto 5
+    }
+  }
 
   void TeleopInit() {}
 
@@ -125,9 +248,6 @@ class Robot: public TimedRobot {
     float J1_1y = firstStick.GetRawAxis(1);
     float J1_2x = firstStick.GetRawAxis(2);
     float J1_2y = firstStick.GetRawAxis(3);
-
-    //sets the second arm to follow the first, ...,true) sets it to be inverted
-    Arm_2.Follow(Arm_1, true);
     
     //runs driveperiodic method below
     DrivePeriodic(J1_1y, J1_2x, speedmod);
@@ -172,20 +292,19 @@ class Robot: public TimedRobot {
 
     //runs intake motor, only half power on the way in because balls kept tearing, also half power option for pilot so it can pick up two balls without ejecting it across the room
     intake.Set(ControlMode::PercentOutput, ((secondStick.GetRawButton(6)*0.5)-secondStick.GetRawButton(5)-firstStick.GetRawButton(8)*0.5));
-    //climb length and tilt mapped to copilot joysticks, maybe add climb mode toggle so the climb cant run on accident
-    climblen.Set(ControlMode::PercentOutput, secondStick.GetRawAxis(1));
-    
+    //climb length and tilt mapped to copilot joysticks, stopped at limit switches
+    double climblenpow = -1*secondStick.GetRawAxis(1);
+    if (!armTop.Get() && climblenpow > 0) {
+      climblenpow = 0;
+    }
+    climblen.Set(ControlMode::PercentOutput, climblenpow);
   
-    tiltpow = secondStick.GetRawAxis(3)/3;
+    tiltpow = -1*secondStick.GetRawAxis(3)/2;
     if (tiltb.Get() && tiltpow > 0) {
       tiltpow = 0;
     } else if (tiltf.Get() && tiltpow < 0) {
       tiltpow = 0;
     }
-    SmartDashboard::PutNumber("tiltf", tiltf.Get());
-    SmartDashboard::PutNumber("tiltb", tiltb.Get());
-  
-
     climbtilt.Set(ControlMode::PercentOutput, tiltpow);
 
     //puts encoder values to the shuffleboard so we can get the arm positions (important for presetting positions)
@@ -193,27 +312,27 @@ class Robot: public TimedRobot {
     SmartDashboard::PutNumber("Right", Arm2E.GetPosition());
   }
 
-    //drive code, copy/pasted for the 50th time from our testing phase
+    // drive code, copy/pasted for the 50th time from our testing phase
     void DrivePeriodic(float y, float x, float mod) {
-    //square inputs, abs() so it keeps its negative or positive sign, also a speed modifier for fast or slow movement, and a modifier on x to keep it from turning too fast
+    // square inputs, abs() so it keeps its negative or positive sign, also a speed modifier for fast or slow movement, and a modifier on x to keep it from turning too fast
     y *= abs(y) * mod;
     x *= abs(x) * mod * turnratio;
 
-    //coast slash limiting min and max output (only -1 to 1 sent to motors), sets left to negative cause 180 degree rotation from right
+    // coast slash limiting min and max output (only -1 to 1 sent to motors), sets left to negative cause 180 degree rotation from right
     float LeftSpeed = max(-1.0f, min(1.0f, -1*((y-x)/25)+(oldLeft*24/25)));
     float RightSpeed = max(-1.0f, min(1.0f, ((y+x)/25)+(oldRight*24/25)));
 
-    //sets motors to their corresponding speeds
+    // sets motors to their corresponding speeds
     Left_1.Set(LeftSpeed);
     Left_2.Set(LeftSpeed);
     Right_1.Set(RightSpeed);
     Right_2.Set(RightSpeed);
 
-    //saves old values for next calculation, allows for smooth coasts
+    // saves old values for next calculation, allows for smooth coasts
     oldLeft = LeftSpeed;
     oldRight = RightSpeed;
   }
-  //initializePID from init, sets all the coefficients and creates a spot in smartdashboard
+  // initializePID from init, sets all the coefficients and creates a spot in smartdashboard
   void initializePID(SparkMaxPIDController controller, string name, double kP, double kI, double kD, double kIz, double kFF, double kMax, double kMin) {
     //sets coefficients
     controller.SetP(kP);
@@ -222,34 +341,55 @@ class Robot: public TimedRobot {
     controller.SetIZone(kIz);
     controller.SetFF(kFF);
     controller.SetOutputRange(kMin,kMax);
-    //creates the wanted rotations in smartdashboard, called in the PID drive method
+    // creates the wanted rotations in smartdashboard, called in the PID drive method
     SmartDashboard::PutNumber("Rotations" + name , 0);
   }
-  //automatic drive code, based on position rather than power, helpful for autonomous
-  void autoDrive(double l, double r) {
-    //grabs value from smartdashboard for wanted rotations on each side
+  // automatic drive code, based on position rather than power, helpful for autonomous
+  void autoDrive(double l, double r, double startl, double startr) {
+    // grabs value from smartdashboard for wanted rotations on each side
     double leftRot = SmartDashboard::GetNumber("Rotationsleft1", 0);
     double rightRot = SmartDashboard::GetNumber("Rotationsright1", 0);
 
-    //sets wanted position to the set rotations on each motor
+    // sets wanted position to the set rotations on each motor
     Left1PID.SetReference(leftRot, ControlType::kPosition);
     Left2PID.SetReference(leftRot, ControlType::kPosition);
     Right1PID.SetReference(rightRot, ControlType::kPosition);
     Right2PID.SetReference(rightRot, ControlType::kPosition);
 
-    //outputs the position of each motor for testing purposes
+    // outputs the position of each motor for testing purposes
     SmartDashboard::PutNumber("Left1 Encoder", Left1E.GetPosition());
     SmartDashboard::PutNumber("Left2 Encoder", Left2E.GetPosition());
     SmartDashboard::PutNumber("Right1 Encoder", Right1E.GetPosition());
     SmartDashboard::PutNumber("Right2 Encoder", Right2E.GetPosition());
 
-    //pushes new set rotations to the smartdashboard
-    SmartDashboard::PutNumber("Rotationsleft1", -l);
-    SmartDashboard::PutNumber("Rotationsright1", r);
+    // pushes new set rotations to the smartdashboard
+    SmartDashboard::PutNumber("Rotationsleft1", l+startl);
+    SmartDashboard::PutNumber("Rotationsright1", -r+startr);
   }
 
+  // PID reset
+  void PIDReset() {
+    initializePID(Left1PID, "left1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
+    initializePID(Left2PID, "left2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
+    initializePID(Right1PID, "right1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
+    initializePID(Right2PID, "right2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
+  
+    initializePID(Arm1PID, "arm1", armP, armI, armD, armIz, armFF, armMaxOutput, armMinOutput);
+    initializePID(Arm2PID, "arm2", armP, armI, armD, armIz, armFF, armMaxOutput, armMinOutput);
+  }
+
+  // Motor Reset
+  void MotorReset() {
+    Left_1.Set(0);
+    Left_2.Set(0);
+    Right_1.Set(0);
+    Right_2.Set(0);
+
+    intake.Set(ControlMode::PercentOutput, 0);
+  }
 };
-//standard code, runs robot class
+
+// standard code, runs robot class
 #ifndef RUNNING_FRC_TESTS
 int main() {
   return frc::StartRobot<Robot>();
