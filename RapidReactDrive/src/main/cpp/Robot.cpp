@@ -117,6 +117,10 @@ class Robot: public TimedRobot {
     camera2.SetResolution(160, 120);
   }
 
+  void RobotPeriodic() {
+    Arm_2.Follow(Arm_1, true);
+  }
+
   // sets all motors to 0 output on init
   void RobotInit() {
     Left_1.Set(0);
@@ -127,11 +131,12 @@ class Robot: public TimedRobot {
     Arm_2.Set(0);
 
     // add all the options to the shuffle board
-    m_chooser.SetDefaultOption("Auto 1", AutoOptions::Auto1);
-    m_chooser.AddOption("Auto 2", AutoOptions::Auto2);
-    m_chooser.AddOption("Auto 3", AutoOptions::Auto3);
+
+    m_chooser.SetDefaultOption("Auto 3", AutoOptions::Auto3);
     m_chooser.AddOption("Auto 4", AutoOptions::Auto4);
     m_chooser.AddOption("Auto 5", AutoOptions::Auto5);
+    m_chooser.AddOption("Auto 1", AutoOptions::Auto1);
+    m_chooser.AddOption("Auto 2", AutoOptions::Auto2);
 
     SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
 
@@ -174,14 +179,14 @@ class Robot: public TimedRobot {
     SmartDashboard::PutNumber("checkpoint ", checkpoint);
     SmartDashboard::PutNumber("startl ", startl);
     SmartDashboard::PutNumber("startr ", startr);
-
+    //two ball auto
     if (m_Selection == AutoOptions::Auto1) {
         if (checkpoint == 0) {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
-            if (gameTimer -> Get() > 0.5_s && gameTimer -> Get() < 1_s) {
+            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
-            if (gameTimer -> Get() >= 1_s) {
+            if (gameTimer -> Get() >= 2_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 1;
             }
@@ -190,11 +195,11 @@ class Robot: public TimedRobot {
             Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
             autoDrive(80/2.2, 80/2.2, startl, startr);
 
-            if (gameTimer -> Get() > 2.5_s && gameTimer -> Get() < 3_s) {
+            if (gameTimer -> Get() > 3.5_s && gameTimer -> Get() < 4_s) {
                 intake.Set(ControlMode::PercentOutput, 1);
             }
 
-            if (gameTimer -> Get() >= 3_s) {
+            if (gameTimer -> Get() >= 4_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 2;
             }
@@ -202,11 +207,11 @@ class Robot: public TimedRobot {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
             autoDrive(0, 0, startl, startr);
             
-            if (gameTimer -> Get() > 4.5_s && gameTimer -> Get() < 5_s) {
+            if (gameTimer -> Get() > 5.5_s && gameTimer -> Get() < 6_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
 
-            if (gameTimer -> Get() >= 5_s) {
+            if (gameTimer -> Get() >= 6_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
                 checkpoint = 3;
@@ -214,31 +219,49 @@ class Robot: public TimedRobot {
         } else {
             MotorReset();
         }
-
+    //one ball auto
     } else if (m_Selection == AutoOptions::Auto2) {
         if (checkpoint == 0) {
-            autoDrive(80/2.2, 80/2.2, startl, startr);
-            Arm1PID.SetReference(larmPositions[0], ControlType::kPosition);
-            
-            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2.2_s) {
-                intake.Set(ControlMode::PercentOutput, 1);
+            Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
+            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2_s) {
+                intake.Set(ControlMode::PercentOutput, -1);
             }
-
-            if (gameTimer -> Get() > 2.2_s) {
+            if (gameTimer -> Get() >= 2_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
+                Arm1PID.SetReference(larmPositions[2], ControlType::kPosition);
                 checkpoint = 1;
             }
+        if (checkpoint == 1) {
+            if (gameTimer -> Get() >= 2.3_s) {
+                autoDrive(50/2.2, 50/2.2, startl, startr);
+                checkpoint = 1;
+            }
+        }
         } else {
             MotorReset();
         }
+    //taxi
     } else if (m_Selection == AutoOptions::Auto3) {
-        // do auto 3
+        if (checkpoint == 0) {
+          autoDrive(50/2.2, 50/2.2, startl, startr);
+        }
+        else {
+            MotorReset();
+        }
+    //delayed taxi
     } else if (m_Selection == AutoOptions::Auto4) {
-        // do auto 4
-    } else if (m_Selection == AutoOptions::Auto5) {
-        // do auto 5
+        if (checkpoint == 0) {
+          if (gameTimer -> Get() >=  10_s) {
+            autoDrive(50/2.2, 50/2.2, startl, startr);
+          }
+        }
+        else {
+            MotorReset();
+        }
     }
   }
+
+
 
   void TeleopInit() {}
 
