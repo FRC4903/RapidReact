@@ -75,7 +75,7 @@ class Robot: public TimedRobot {
   double armP = 1e-2, armI = 17e-7, armD =1e-6, armIz = 0, armFF = 0.000015, armMaxOutput = 0.5, armMinOutput = -0.5; 
 
   //arm positions for automatic arm mode, in order of [intake, front shoot, vertical, back shoot], based on enabling while arm is vertical
-  double larmPositions[4] = {-55.0f, -12.0f, 0.0f, 14.0f};
+  double larmPositions[4] = {-55.0f, -12.0f, 0.0f, 15.0f};
 
   //manual vs automatic mode, just in case the arms don't play nice one day we can still fully control stuff
   bool manual = false;
@@ -115,8 +115,20 @@ class Robot: public TimedRobot {
   {
     cs::UsbCamera camera1 = CameraServer::GetInstance()->StartAutomaticCapture();
     camera1.SetResolution(160, 120);
+    camera1.SetFPS(15);
     cs::UsbCamera camera2 = CameraServer::GetInstance()->StartAutomaticCapture();
     camera2.SetResolution(160, 120);
+    camera2.SetFPS(15);
+
+    // add all the options to the shuffle board
+
+    m_chooser.SetDefaultOption("taxi", AutoOptions::Auto3);
+    m_chooser.AddOption("delay taxi", AutoOptions::Auto4);
+    m_chooser.AddOption("2ball", AutoOptions::Auto1);
+    m_chooser.AddOption("1ball", AutoOptions::Auto2);
+
+    SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
+
   }
 
   // sets all motors to 0 output on init
@@ -128,15 +140,7 @@ class Robot: public TimedRobot {
     Arm_1.Set(0);
     Arm_2.Set(0);
 
-    // add all the options to the shuffle board
-
-    m_chooser.SetDefaultOption("taxi", AutoOptions::Auto3);
-    m_chooser.AddOption("delay taxi", AutoOptions::Auto4);
-    m_chooser.AddOption("2ball", AutoOptions::Auto1);
-    m_chooser.AddOption("1ball", AutoOptions::Auto2);
-
-    SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
-
+    
     // initializes PID controllers for drive and arm motors
     initializePID(Left1PID, "left1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
     initializePID(Left2PID, "left2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
@@ -179,10 +183,10 @@ class Robot: public TimedRobot {
     if (m_Selection == AutoOptions::Auto1) {
         if (checkpoint == 0) {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
-            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2.5_s) {
+            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 3.5_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
-            if (gameTimer -> Get() >= 2.5_s) {
+            if (gameTimer -> Get() >= 3.5_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 1;
             }
@@ -192,7 +196,7 @@ class Robot: public TimedRobot {
             autoDrive(80/2.2, 80/2.2, startl, startr);
             intake.Set(ControlMode::PercentOutput, 1);
 
-            if (gameTimer -> Get() >= 5_s) {
+            if (gameTimer -> Get() >= 6_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 2;
             }
@@ -200,11 +204,11 @@ class Robot: public TimedRobot {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
             autoDrive(-5/2.2, -5/2.2, startl, startr);
             
-            if (gameTimer -> Get() > 8_s && gameTimer -> Get() < 10_s) {
+            if (gameTimer -> Get() > 9.5_s && gameTimer -> Get() < 11.5_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
 
-            if (gameTimer -> Get() >= 10_s) {
+            if (gameTimer -> Get() >= 11.5_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 Arm1PID.SetReference(larmPositions[2], ControlType::kPosition);
                 checkpoint = 3;
@@ -253,7 +257,10 @@ class Robot: public TimedRobot {
 
 
 
-  void TeleopInit() {}
+  void TeleopInit() {
+    gameTimer -> Start();
+    gameTimer -> Reset();
+  }
 
   void TeleopPeriodic() {
     //variables for joystick positions, J1 for first controller, _1 is left stick _2 is right stick, x for horizontal, y for vertical
@@ -261,6 +268,19 @@ class Robot: public TimedRobot {
     float J1_1y = firstStick.GetRawAxis(1);
     float J1_2x = firstStick.GetRawAxis(2);
     float J1_2y = firstStick.GetRawAxis(3);
+
+  SmartDashboard::PutNumber("ARM SHOOT POSITHUN", Arm1E.GetPosition());
+
+    if (Arm1E.GetPosition() > larmPositions[1] -5 && Arm1E.GetPosition() < larmPositions[1] + 5) {
+      SmartDashboard::PutBoolean("Arm Good", true);
+    } else {
+      SmartDashboard::PutBoolean("Arm Good", false);
+    }
+    if (gameTimer->Get() > 90_s) {
+      SmartDashboard::PutBoolean("Climb Time", true);
+    } else {
+      SmartDashboard::PutBoolean("Climb Time", false);  
+    }
   
     //speed modifiers
     if (firstStick.GetRawButton(5)) {
@@ -277,7 +297,10 @@ class Robot: public TimedRobot {
     climbmode = firstStick.GetRawButton(7);
     
     if (!climbmode) {
-    
+
+      climblen.Set(ControlMode::PercentOutput, 0);
+      climblen.Set(ControlMode::PercentOutput, 0);
+      intake.Set(ControlMode::PercentOutput, 0);
     //sets arm outputs to 0 in manual mode, used to reset them if manual gets switched off suddenly
     if (manual) {
       Arm_1.Set(0);
@@ -321,6 +344,8 @@ class Robot: public TimedRobot {
     climblen.Set(ControlMode::PercentOutput, climblenpow);
   
     tiltpow = -1*secondStick.GetRawAxis(3)/2;
+    SmartDashboard::PutNumber("tiltb", tiltb.Get());
+    SmartDashboard::PutNumber("tiltf", tiltf.Get());
     if (tiltb.Get() && tiltpow > 0) {
       tiltpow = 0;
     } else if (tiltf.Get() && tiltpow < 0) {
