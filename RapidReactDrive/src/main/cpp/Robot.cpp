@@ -1,17 +1,12 @@
-/*Rapid React code, drive and some auto
-*/
+//Rapid React code, drive and some auto
 #include <iostream>
-
 #include <frc/Timer.h>
 #include "frc/TimedRobot.h"
-
 #include <frc/DigitalInput.h>
 #include "rev/CANSparkMax.h"
 #include <fmt/core.h>
-
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc/smartDashboard/SendableChooser.h>
-
 #include <frc/Encoder.h>
 #include <frc/Joystick.h>
 #include <ctre/Phoenix.h>
@@ -21,7 +16,6 @@
 using namespace frc;
 using namespace std;
 using namespace rev;
-//namespaces so I dont have to type frc:: in front of everything, personal preference on these for sure
 
 class Robot: public TimedRobot {
   public:
@@ -56,7 +50,7 @@ class Robot: public TimedRobot {
   TalonSRX climbtilt;
   TalonSRX climblen;
 
-  DigitalInput tiltb, tiltf, armTop;
+  DigitalInput tiltb, tiltf, armTop;      //limit switches, back of the climb arm tilt, front of it, and the top of the climb arm
 
   //joysticks added, first is main driver, second is co-pilot with control over arms and such
   Joystick firstStick{0};
@@ -92,17 +86,17 @@ class Robot: public TimedRobot {
   float startl = 0;
   float startr = 0;
 
-  int checkpoint;
+  int checkpoint; //tracks stages of autonomous
 
   float circumfirence = 23.6;
   float gear_ratio = 10.7;
-  float factorToConvertDistToRot = circumfirence / gear_ratio;
+  float factorToConvertDistToRot = circumfirence / gear_ratio;  //ratio of the wheel circumference to the gear ratio to translate distances to rotations
 
   // options for auto
-  enum AutoOptions { Auto1, Auto2, Auto3, Auto4, Auto5 };
+  enum AutoOptions { Auto1, Auto2, Auto3, Auto4, Auto5 }; 
   SendableChooser<AutoOptions> m_chooser;
 
-  bool climbmode = false;
+  bool climbmode = false;         //when true, the robot can climb. essentially two factor authentication so both drivers have to agree to climb
 
   // adds ID to talons
   Robot():
@@ -113,22 +107,10 @@ class Robot: public TimedRobot {
     tiltf(1),
     armTop(2)
   {
-    cs::UsbCamera camera1 = CameraServer::GetInstance()->StartAutomaticCapture();
+    cs::UsbCamera camera1 = CameraServer::GetInstance()->StartAutomaticCapture();     //front and back cameras, in stunning 160p
     camera1.SetResolution(160, 120);
-    camera1.SetFPS(15);
     cs::UsbCamera camera2 = CameraServer::GetInstance()->StartAutomaticCapture();
     camera2.SetResolution(160, 120);
-    camera2.SetFPS(15);
-
-    // add all the options to the shuffle board
-
-    m_chooser.SetDefaultOption("taxi", AutoOptions::Auto3);
-    m_chooser.AddOption("delay taxi", AutoOptions::Auto4);
-    m_chooser.AddOption("2ball", AutoOptions::Auto1);
-    m_chooser.AddOption("1ball", AutoOptions::Auto2);
-
-    SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
-
   }
 
   // sets all motors to 0 output on init
@@ -140,7 +122,15 @@ class Robot: public TimedRobot {
     Arm_1.Set(0);
     Arm_2.Set(0);
 
-    
+    // add all the options to the shuffle board
+
+    m_chooser.SetDefaultOption("taxi", AutoOptions::Auto3);
+    m_chooser.AddOption("delay taxi", AutoOptions::Auto4);
+    m_chooser.AddOption("2ball", AutoOptions::Auto1);
+    m_chooser.AddOption("1ball", AutoOptions::Auto2);
+
+    SmartDashboard::PutData(&m_chooser); // throw data at shuffle board
+
     // initializes PID controllers for drive and arm motors
     initializePID(Left1PID, "left1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
     initializePID(Left2PID, "left2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
@@ -153,7 +143,7 @@ class Robot: public TimedRobot {
     intake.Set(ControlMode::PercentOutput, 0);
   }
   void RobotPeriodic() {
-    Arm_2.Follow(Arm_1, true);
+    Arm_2.Follow(Arm_1, true);        //makes the second arm motor run the same as the first, the true sets it to reverse
   }
   
   void AutonomousInit() {
@@ -183,10 +173,10 @@ class Robot: public TimedRobot {
     if (m_Selection == AutoOptions::Auto1) {
         if (checkpoint == 0) {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
-            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 3.5_s) {
+            if (gameTimer -> Get() > 1.5_s && gameTimer -> Get() < 2.5_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
-            if (gameTimer -> Get() >= 3.5_s) {
+            if (gameTimer -> Get() >= 2.5_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 1;
             }
@@ -196,7 +186,7 @@ class Robot: public TimedRobot {
             autoDrive(80/2.2, 80/2.2, startl, startr);
             intake.Set(ControlMode::PercentOutput, 1);
 
-            if (gameTimer -> Get() >= 6_s) {
+            if (gameTimer -> Get() >= 5_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 checkpoint = 2;
             }
@@ -204,11 +194,11 @@ class Robot: public TimedRobot {
             Arm1PID.SetReference(larmPositions[3], ControlType::kPosition);
             autoDrive(-5/2.2, -5/2.2, startl, startr);
             
-            if (gameTimer -> Get() > 9.5_s && gameTimer -> Get() < 11.5_s) {
+            if (gameTimer -> Get() > 8_s && gameTimer -> Get() < 10_s) {
                 intake.Set(ControlMode::PercentOutput, -1);
             }
 
-            if (gameTimer -> Get() >= 11.5_s) {
+            if (gameTimer -> Get() >= 10_s) {
                 intake.Set(ControlMode::PercentOutput, 0);
                 Arm1PID.SetReference(larmPositions[2], ControlType::kPosition);
                 checkpoint = 3;
@@ -257,10 +247,7 @@ class Robot: public TimedRobot {
 
 
 
-  void TeleopInit() {
-    gameTimer -> Start();
-    gameTimer -> Reset();
-  }
+  void TeleopInit() {}
 
   void TeleopPeriodic() {
     //variables for joystick positions, J1 for first controller, _1 is left stick _2 is right stick, x for horizontal, y for vertical
@@ -268,39 +255,23 @@ class Robot: public TimedRobot {
     float J1_1y = firstStick.GetRawAxis(1);
     float J1_2x = firstStick.GetRawAxis(2);
     float J1_2y = firstStick.GetRawAxis(3);
-
-  SmartDashboard::PutNumber("ARM SHOOT POSITHUN", Arm1E.GetPosition());
-
-    if (Arm1E.GetPosition() > larmPositions[1] -5 && Arm1E.GetPosition() < larmPositions[1] + 5) {
-      SmartDashboard::PutBoolean("Arm Good", true);
-    } else {
-      SmartDashboard::PutBoolean("Arm Good", false);
-    }
-    if (gameTimer->Get() > 90_s) {
-      SmartDashboard::PutBoolean("Climb Time", true);
-    } else {
-      SmartDashboard::PutBoolean("Climb Time", false);  
-    }
   
     //speed modifiers
-    if (firstStick.GetRawButton(5)) {
+    if (firstStick.GetRawButton(5)) {       //low
       speedmod=0.25;
-    } else if (firstStick.GetRawButton(6)) {
+    } else if (firstStick.GetRawButton(6)) { // high
       speedmod=1; 
-    } else {
+    } else {                            //normal
       speedmod=0.5;
     }
 
     //runs driveperiodic method below
     DrivePeriodic(J1_1y, J1_2x, speedmod);
     
-    climbmode = firstStick.GetRawButton(7);
+    climbmode = firstStick.GetRawButton(7); //when the driver holds their 7 button the copilot can run climb motors
     
-    if (!climbmode) {
-
-      climblen.Set(ControlMode::PercentOutput, 0);
-      climblen.Set(ControlMode::PercentOutput, 0);
-      intake.Set(ControlMode::PercentOutput, 0);
+    if (!climbmode) {     //normal mode
+    
     //sets arm outputs to 0 in manual mode, used to reset them if manual gets switched off suddenly
     if (manual) {
       Arm_1.Set(0);
@@ -344,8 +315,6 @@ class Robot: public TimedRobot {
     climblen.Set(ControlMode::PercentOutput, climblenpow);
   
     tiltpow = -1*secondStick.GetRawAxis(3)/2;
-    SmartDashboard::PutNumber("tiltb", tiltb.Get());
-    SmartDashboard::PutNumber("tiltf", tiltf.Get());
     if (tiltb.Get() && tiltpow > 0) {
       tiltpow = 0;
     } else if (tiltf.Get() && tiltpow < 0) {
@@ -404,7 +373,7 @@ class Robot: public TimedRobot {
 
   }
 
-  // PID reset
+  // PID reset, literally every one of them is re-initialized
   void PIDReset() {
     initializePID(Left1PID, "left1", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
     initializePID(Left2PID, "left2", driveP, driveI, driveD, driveIz, driveFF, driveMaxOutput, driveMinOutput);
